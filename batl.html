@@ -2,10 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Морской бой (Firebase)</title>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<title>Морской бой (P2P)</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
   body { background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 20px; }
@@ -20,12 +17,10 @@
   button.secondary:hover { background: #64748b; }
   button.danger { background: #ef4444; color: white; }
   button.danger:hover { background: #f87171; }
-  input { padding: 12px; font-size: 24px; border-radius: 8px; border: 2px solid #38bdf8;
-          background: #1e293b; color: #38bdf8; text-align: center; text-transform: uppercase;
-          letter-spacing: 4px; width: 200px; font-weight: bold; }
-  .room-code { font-size: 36px; font-weight: bold; color: #fbbf24; letter-spacing: 6px;
-               background: #1e293b; padding: 20px; border-radius: 12px; display: inline-block;
-               border: 2px solid #fbbf24; }
+  textarea { width: 100%; height: 80px; background: #1e293b; color: #38bdf8; border: 2px solid #334155;
+             border-radius: 8px; padding: 10px; font-family: monospace; font-size: 12px; resize: vertical; }
+  .step { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #334155; }
+  .step h3 { color: #38bdf8; margin-bottom: 10px; }
   .status { text-align: center; margin: 15px 0; font-size: 18px; color: #fbbf24; min-height: 25px; }
   .boards { display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
   .board-wrap { text-align: center; }
@@ -49,36 +44,56 @@
   .log div { padding: 4px 0; border-bottom: 1px solid #334155; color: #cbd5e1; }
   .win { font-size: 32px; color: #fbbf24; text-align: center; margin: 20px; font-weight: bold; }
   .lose { font-size: 32px; color: #ef4444; text-align: center; margin: 20px; font-weight: bold; }
+  .copy-btn { background: #22c55e; color: white; padding: 8px 16px; font-size: 14px; margin-top: 5px; }
+  .copy-btn:hover { background: #4ade80; }
   .rematch-btn { background: #f59e0b; color: #0f172a; font-size: 18px; padding: 15px 30px; margin-top: 10px; }
   .rematch-btn:hover { background: #fbbf24; }
 </style>
 </head>
 <body>
 
-<h1>🚢 МОРСКОЙ БОЙ</h1>
+<h1>🚢 МОРСКОЙ БОЙ (P2P)</h1>
 
-<!-- МЕНЮ -->
+<!-- ЭТАП 1: МЕНЮ -->
 <div id="menu" class="container">
   <div style="text-align:center">
-    <button onclick="createRoom()">👑 Создать комнату</button>
-    <br><br>
-    <input id="joinCode" maxlength="6" placeholder="КОД">
-    <button onclick="joinRoom()">🎮 Присоединиться</button>
-  </div>
-  <div class="status" id="menuStatus"></div>
-</div>
-
-<!-- КОД КОМНАТЫ -->
-<div id="roomInfo" class="container hidden">
-  <div style="text-align:center">
-    <p>Код твоей комнаты:</p>
-    <div class="room-code" id="roomCode">------</div>
-    <p style="margin-top:15px">Передай этот код другу. Ожидание подключения...</p>
-    <div class="status" id="roomStatus"></div>
+    <button onclick="initHost()">👑 Создать игру (Я хост)</button>
+    <button onclick="initGuest()">🎮 Присоединиться (Я гость)</button>
   </div>
 </div>
 
-<!-- РАССТАНОВКА -->
+<!-- ЭТАП 2: ОБМЕН КОДАМИ -->
+<div id="handshake" class="container hidden">
+  <div id="hostSteps" class="hidden">
+    <div class="step">
+      <h3>Шаг 1: Отправьте этот код другу</h3>
+      <textarea id="hostOffer" readonly></textarea>
+      <button class="copy-btn" onclick="copyToClipboard('hostOffer')">📋 Копировать код</button>
+    </div>
+    <div class="step">
+      <h3>Шаг 3: Вставьте ответный код от друга</h3>
+      <textarea id="hostAnswerInput" placeholder="Вставьте ответный код друга сюда..."></textarea>
+      <button onclick="acceptAnswer()">✅ Подключиться</button>
+    </div>
+  </div>
+
+  <div id="guestSteps" class="hidden">
+    <div class="step">
+      <h3>Шаг 2: Вставьте код от друга</h3>
+      <textarea id="guestOfferInput" placeholder="Вставьте код, который прислал друг..."></textarea>
+      <button onclick="generateAnswer()">📝 Сгенерировать ответ</button>
+    </div>
+    <div class="step hidden" id="guestAnswerStep">
+      <h3>Шаг 3: Отправьте этот ответный код другу</h3>
+      <textarea id="guestAnswer" readonly></textarea>
+      <button class="copy-btn" onclick="copyToClipboard('guestAnswer')">📋 Копировать ответ</button>
+      <p style="margin-top:10px; color:#fbbf24">После отправки ждите подключения!</p>
+    </div>
+  </div>
+  <div class="status" id="handshakeStatus"></div>
+</div>
+
+<!-- ЭТАП 3: РАССТАНОВКА -->
 <div id="setup" class="container hidden">
   <div class="status" id="setupStatus">Расставьте корабли. Кликните по полю для установки.</div>
   <div class="ship-indicator" id="shipIndicator">Ставим: 4-палубный (осталось: 1)</div>
@@ -99,7 +114,7 @@
   </div>
 </div>
 
-<!-- ИГРА -->
+<!-- ЭТАП 4: ИГРА -->
 <div id="game" class="container hidden">
   <div class="status" id="gameStatus"></div>
   <div id="gameResult" class="hidden"></div>
@@ -120,41 +135,24 @@
 </div>
 
 <script>
-// ===== НАСТРОЙКИ FIREBASE =====
-// ЗАМЕНИ ЭТИ ДАННЫЕ НА СВОИ ИЗ FIREBASE CONSOLE!
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef"
-};
-
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-
 const SIZE = 10;
 const SHIPS = [4, 3, 3, 2, 2, 2, 1, 1, 1, 1];
-let peer = null;
-let conn = null;
+let pc, dc;
 let isHost = false;
-let myRoomCode = '';
 let myShips = [], enemyShots = [], myShots = [];
 let myTurn = true, ready = false, enemyReady = false, gameOver = false;
 
-// Расстановка
+// Переменные для ручной расстановки
 let placedShipsData = [];
 let isHorizontal = true;
 let currentShipIndex = 0;
 
-function genCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let s = '';
-  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
-  return s;
-}
+const rtcConfig = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' }
+  ]
+};
 
 function initArrays() {
   enemyShots = Array.from({length: SIZE}, () => Array(SIZE).fill(0));
@@ -162,112 +160,79 @@ function initArrays() {
 }
 initArrays();
 
-function createRoom() {
+function initHost() {
   isHost = true;
-  myRoomCode = genCode();
   document.getElementById('menu').classList.add('hidden');
-  document.getElementById('roomInfo').classList.remove('hidden');
-  document.getElementById('roomCode').textContent = myRoomCode;
-  document.getElementById('roomStatus').textContent = 'Создание комнаты...';
+  document.getElementById('handshake').classList.remove('hidden');
+  document.getElementById('hostSteps').classList.remove('hidden');
+  
+  pc = new RTCPeerConnection(rtcConfig);
+  dc = pc.createDataChannel('game', { ordered: true });
+  setupDataChannel();
 
-  // Записываем в Firebase, что комната создана
-  db.ref('rooms/' + myRoomCode).set({
-    status: 'waiting',
-    createdAt: firebase.database.ServerValue.TIMESTAMP
-  });
-
-  // Слушаем, когда гость подключится
-  db.ref('rooms/' + myRoomCode).on('value', (snapshot) => {
-    const data = snapshot.val();
-    if (data && data.status === 'connecting' && data.peerId && !conn) {
-      document.getElementById('roomStatus').textContent = 'Игрок найден! Подключение...';
-      connectToPeer(data.peerId);
-    }
-  });
-
-  // Создаем Peer
-  peer = new Peer('seabattle-' + myRoomCode, { debug: 0 });
-  peer.on('open', (id) => {
-    document.getElementById('roomStatus').textContent = 'Ожидание игрока...';
-    db.ref('rooms/' + myRoomCode).update({ hostPeerId: id });
-  });
-  peer.on('connection', (c) => {
-    conn = c;
-    setupConn();
-  });
-  peer.on('error', (e) => {
-    document.getElementById('roomStatus').textContent = 'Ошибка: ' + e.type;
+  pc.createOffer().then(offer => pc.setLocalDescription(offer)).then(() => {
+    setTimeout(() => {
+      document.getElementById('hostOffer').value = btoa(JSON.stringify(pc.localDescription));
+    }, 1000);
   });
 }
 
-function joinRoom() {
-  const code = document.getElementById('joinCode').value.trim().toUpperCase();
-  if (code.length !== 6) { alert('Код должен быть 6 символов'); return; }
-  
+function initGuest() {
   isHost = false;
-  myRoomCode = code;
-  document.getElementById('menuStatus').textContent = 'Поиск комнаты...';
-
-  // Проверяем, существует ли комната
-  db.ref('rooms/' + code).once('value', (snapshot) => {
-    const data = snapshot.val();
-    if (!data) {
-      alert('Комната не найдена!');
-      document.getElementById('menuStatus').textContent = '';
-      return;
-    }
-    if (data.status !== 'waiting') {
-      alert('Комната уже занята или игра началась!');
-      document.getElementById('menuStatus').textContent = '';
-      return;
-    }
-
-    document.getElementById('menuStatus').textContent = 'Подключение...';
-    
-    // Создаем Peer и подключаемся к хосту
-    peer = new Peer({ debug: 0 });
-    peer.on('open', (id) => {
-      // Помечаем в Firebase, что мы хотим подключиться
-      db.ref('rooms/' + code).update({
-        status: 'connecting',
-        peerId: id
-      });
-      
-      // Подключаемся к хосту
-      conn = peer.connect('seabattle-' + code, { reliable: true });
-      conn.on('open', () => setupConn());
-      conn.on('error', (e) => {
-        document.getElementById('menuStatus').textContent = 'Ошибка подключения';
-      });
-    });
-    peer.on('error', (e) => {
-      document.getElementById('menuStatus').textContent = 'Ошибка: ' + e.type;
-    });
-  });
-}
-
-function connectToPeer(guestPeerId) {
-  if (conn) return;
-  conn = peer.connect(guestPeerId, { reliable: true });
-  conn.on('open', () => setupConn());
-}
-
-function setupConn() {
-  document.getElementById('roomInfo').classList.add('hidden');
   document.getElementById('menu').classList.add('hidden');
-  document.getElementById('setup').classList.remove('hidden');
-  resetSetupState();
-  buildSetupBoard();
-  log('✅ Соединение установлено! Расставьте корабли.');
+  document.getElementById('handshake').classList.remove('hidden');
+  document.getElementById('guestSteps').classList.remove('hidden');
   
-  conn.on('data', onData);
-  conn.on('close', () => {
-    alert('Соединение разорвано');
-    location.reload();
-  });
+  pc = new RTCPeerConnection(rtcConfig);
+  pc.ondatachannel = (e) => {
+    dc = e.channel;
+    setupDataChannel();
+  };
 }
 
-function send(obj) { if (conn && conn.readyState === 'open') conn.send(obj); }
+function generateAnswer() {
+  const offerStr = document.getElementById('guestOfferInput').value.trim();
+  if (!offerStr) return alert('Вставьте код от друга!');
+  try {
+    const offer = JSON.parse(atob(offerStr));
+    pc.setRemoteDescription(new RTCSessionDescription(offer)).then(() => pc.createAnswer()).then(answer => {
+      return pc.setLocalDescription(answer);
+    }).then(() => {
+      setTimeout(() => {
+        document.getElementById('guestAnswer').value = btoa(JSON.stringify(pc.localDescription));
+        document.getElementById('guestAnswerStep').classList.remove('hidden');
+      }, 1000);
+    });
+  } catch (e) { alert('Неверный формат кода. Скопируйте его полностью.'); }
+}
+
+function acceptAnswer() {
+  const answerStr = document.getElementById('hostAnswerInput').value.trim();
+  if (!answerStr) return alert('Вставьте ответный код!');
+  try {
+    const answer = JSON.parse(atob(answerStr));
+    pc.setRemoteDescription(new RTCSessionDescription(answer)).then(() => {
+      document.getElementById('handshakeStatus').textContent = 'Соединение устанавливается...';
+    });
+  } catch (e) { alert('Неверный формат кода.'); }
+}
+
+function setupDataChannel() {
+  dc.onopen = () => {
+    document.getElementById('handshake').classList.add('hidden');
+    document.getElementById('setup').classList.remove('hidden');
+    resetSetupState();
+    buildSetupBoard();
+    log('✅ Соединение установлено! Расставьте корабли.');
+  };
+  dc.onmessage = (e) => onData(JSON.parse(e.data));
+  dc.onclose = () => {
+    alert('Соединение разорвано. Обновите страницу.');
+    location.reload();
+  };
+}
+
+function send(obj) { if (dc && dc.readyState === 'open') dc.send(JSON.stringify(obj)); }
 
 function onData(data) {
   if (data.type === 'rematch') {
@@ -291,7 +256,7 @@ function onData(data) {
   }
 }
 
-// ===== РАССТАНОВКА =====
+// ===== ЛОГИКА РАССТАНОВКИ =====
 function resetSetupState() {
   placedShipsData = [];
   currentShipIndex = 0;
@@ -306,7 +271,8 @@ function getSetupGrid() {
   const grid = Array.from({length: SIZE}, () => Array(SIZE).fill(0));
   for (const ship of placedShipsData) {
     for (const [r, c] of ship.cells) {
-      grid[r][c] = 1;
+      grid[r][c] = 1; // Корабль
+      // Помечаем окружение как заблокированное (2)
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
           const nr = r + dr, nc = c + dc;
@@ -321,16 +287,15 @@ function getSetupGrid() {
 }
 
 function canPlace(r, c, size, horizontal) {
-  const grid = getSetupGrid();
   if (horizontal) {
     if (c + size > SIZE) return false;
     for (let i = 0; i < size; i++) {
-      if (grid[r][c + i] !== 0) return false;
+      if (getSetupGrid()[r][c + i] !== 0) return false;
     }
   } else {
     if (r + size > SIZE) return false;
     for (let i = 0; i < size; i++) {
-      if (grid[r + i][c] !== 0) return false;
+      if (getSetupGrid()[r + i][c] !== 0) return false;
     }
   }
   return true;
@@ -382,7 +347,7 @@ function updateShipIndicator() {
   } else {
     const size = SHIPS[currentShipIndex];
     const count = SHIPS.filter(s => s === size).length - placedShipsData.filter(s => s.size === size).length;
-    el.textContent = `Ставим: ${size}-палубный (осталось: ${count}) | ${isHorizontal ? 'Горизонтально' : 'Вертикально'}`;
+    el.textContent = `Ставим: ${size}-палубный (осталось таких: ${count}) | Ориентация: ${isHorizontal ? 'Горизонтально' : 'Вертикально'}`;
     el.style.color = '#fbbf24';
   }
 }
@@ -390,7 +355,7 @@ function updateShipIndicator() {
 function toggleOrientation() {
   isHorizontal = !isHorizontal;
   updateShipIndicator();
-  buildSetupBoard();
+  buildSetupBoard(); // Перерисовать, чтобы сбросить hover-эффекты
 }
 
 function buildSetupBoard() {
@@ -408,6 +373,7 @@ function buildSetupBoard() {
         td.className = 'ship';
       } else {
         td.className = 'water';
+        // Обработчики для ручной установки
         td.onclick = () => placeShip(r, c);
         td.oncontextmenu = (e) => {
           e.preventDefault();
@@ -463,6 +429,7 @@ function randomPlace() {
       const horiz = Math.random() < 0.5;
       const r = Math.floor(Math.random() * SIZE), c = Math.floor(Math.random() * SIZE);
       
+      // Проверка возможности установки
       let can = true;
       if (horiz) {
         if (c + size > SIZE) can = false;
@@ -498,6 +465,7 @@ function randomPlace() {
 function readySetup() {
   if (currentShipIndex < SHIPS.length) return alert('Расставьте все корабли!');
   ready = true;
+  // Преобразуем данные для игровой логики
   myShips = placedShipsData.map(s => ({ cells: s.cells, hits: 0 }));
   
   document.getElementById('readyBtn').disabled = true;
@@ -507,7 +475,7 @@ function readySetup() {
   if (isHost && enemyReady) startGame();
 }
 
-// ===== ИГРА =====
+// ===== ЛОГИКА ИГРЫ =====
 function resetGameState() {
   myShips = [];
   initArrays();
@@ -569,12 +537,12 @@ function startGame() {
 
 function updateGameStatus() {
   if (gameOver) return;
-  document.getElementById('gameStatus').textContent = myTurn ? '🎯 ВАШ ХОД!' : '⏳ Ход противника...';
+  document.getElementById('gameStatus').textContent = myTurn ? '🎯 ВАШ ХОД! Стреляйте по полю противника' : '⏳ Ход противника...';
 }
 
 function shoot(r, c) {
   if (!myTurn || gameOver || myShots[r][c] !== 0) return;
-  myShots[r][c] = 9;
+  myShots[r][c] = 9; // пометка "в процессе"
   send({ type: 'shot', r, c });
 }
 
@@ -595,7 +563,7 @@ function handleEnemyShot(r, c) {
   else if (result === 'hit') { t.rows[r].cells[c].className = 'hit'; t.rows[r].cells[c].textContent = '✕'; }
   else if (result === 'kill') markKill(t, myShips[shipIdx].cells, true);
 
-  log(`🔴 Противник: ${cellName(r,c)} - ${result==='miss'?'промах':result==='hit'?'попадание':'УБИЛ!'}`);
+  log(`🔴 Противник стреляет в ${cellName(r,c)}: ${result==='miss'?'промах':result==='hit'?'попадание':'УБИЛ!'}`);
   send({ type: 'shotResult', r, c, result, cells: result==='kill' ? myShips[shipIdx].cells : [] });
 
   if (myShips.every(s => s.hits === s.cells.length)) {
@@ -613,17 +581,17 @@ function applyMyShotResult(r, c, result, cells) {
   if (result === 'miss') {
     myShots[r][c] = 1;
     t.rows[r].cells[c].className = 'miss'; t.rows[r].cells[c].textContent = '•';
-    log(`🔵 Вы: ${cellName(r,c)} - промах`);
+    log(`🔵 Вы стреляли в ${cellName(r,c)}: промах`);
     myTurn = false;
   } else if (result === 'hit') {
     myShots[r][c] = 2;
     t.rows[r].cells[c].className = 'hit'; t.rows[r].cells[c].textContent = '✕';
-    log(`🔵 Вы: ${cellName(r,c)} - ПОПАДАНИЕ!`);
+    log(`🔵 Вы стреляли в ${cellName(r,c)}: ПОПАДАНИЕ! Стреляйте еще.`);
     myTurn = true;
   } else if (result === 'kill') {
     myShots[r][c] = 3;
     markKill(t, cells, false);
-    log(`🔵 Вы: ${cellName(r,c)} - УНИЧТОЖЕН!`);
+    log(`🔵 Вы стреляли в ${cellName(r,c)}: КОРАБЛЬ УНИЧТОЖЕН!`);
     myTurn = true;
     let kills = 0;
     t.querySelectorAll('td.kill').forEach(() => kills++);
@@ -667,6 +635,14 @@ function log(msg) {
   l.insertBefore(d, l.firstChild);
 }
 
+function copyToClipboard(id) {
+  const el = document.getElementById(id);
+  el.select();
+  document.execCommand('copy');
+  alert('Скопировано! Отправьте это другу в мессенджер.');
+}
+
+// Глобальный слушатель клавиши R для поворота
 document.addEventListener('keydown', (e) => {
   if ((e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К') && !document.getElementById('setup').classList.contains('hidden')) {
     toggleOrientation();
